@@ -840,7 +840,8 @@ static ssize_t cameraflash_file_cmd_store(struct device *dev,
 		gpio_set_value_cansleep(gpio_flash_set, 0);
 #endif
 		torchonoff = 0;
-	} else {
+	}
+	else {
 		pr_err("[Torch flash]ON\n");
 		gpio_set_value_cansleep(gpio_flash_en, 0);
 #ifdef CONFIG_MACH_EXPRESS
@@ -862,6 +863,16 @@ static ssize_t cameraflash_file_cmd_store(struct device *dev,
 #endif
 		torchonoff = 1;
 	}
+<<<<<<< HEAD
+=======
+#if defined(CONFIG_MACH_APEXQ)
+	if (value > 1) {
+		pr_err("[Torch flash]HIGH\n");
+		gpio_set_value_cansleep(gpio_flash_en, 1);
+		gpio_set_value_cansleep(gpio_flash_set, 0);
+	}
+#endif
+>>>>>>> f1a2817... apexq: tweak torch high brightness
 	return size;
 }
 
