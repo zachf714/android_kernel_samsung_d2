@@ -461,7 +461,7 @@ int diag_copy_remote(char __user *buf, size_t count, int *pret, int *pnum_data)
 					i, (unsigned int)hsic_buf_tbl[i].buf,
 					hsic_buf_tbl[i].length);
 				num_data++;
-
+#ifndef CONFIG_DIAGFWD_REMOTE_PROC_TEMP
 				/* Copy the negative token */
 				if (copy_to_user(buf+ret,
 					&remote_token, 4)) {
@@ -469,7 +469,7 @@ int diag_copy_remote(char __user *buf, size_t count, int *pret, int *pnum_data)
 						goto drop_hsic;
 				}
 				ret += 4;
-
+#endif
 				/* Copy the length of data being passed */
 				if (copy_to_user(buf+ret,
 					(void *)&(hsic_buf_tbl[i].length),
@@ -852,7 +852,16 @@ int diag_switch_logging(unsigned long ioarg)
 		diag_clear_hsic_tbl();
 		driver->mask_check = 0;
 		driver->logging_mode = MEMORY_DEVICE_MODE;
-	}
+
+		/*  sub_logging_mode is for MDM, 
+		 *  the other is for MSM8960/MSM8930 */
+#if defined(CONFIG_MACH_JF)
+		driver->sub_logging_mode = UART_MODE;
+#else
+		driver->sub_logging_mode = NO_LOGGING_MODE;
+#endif
+	} else
+		driver->sub_logging_mode = NO_LOGGING_MODE;
 
 	driver->logging_process_id = current->tgid;
 	mutex_unlock(&driver->diagchar_mutex);
@@ -1451,6 +1460,7 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			return -EIO;
 		}
 		/* Check for proc_type */
+
 		remote_proc = diag_get_remote(*(int *)buf_copy);
 
 		if (!remote_proc) {
@@ -1574,6 +1584,7 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			return -EIO;
 		}
 		/* Check for proc_type */
+#ifndef CONFIG_DIAGFWD_REMOTE_PROC_TEMP
 		remote_proc = diag_get_remote(*(int *)user_space_data);
 
 		if (remote_proc) {
@@ -1581,7 +1592,9 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			payload_size -= 4;
 			buf += 4;
 		}
-
+#else
+		remote_proc = MDM;
+#endif
 		/* Check masks for On-Device logging */
 		if (driver->mask_check) {
 			if (!mask_request_validate(user_space_data +
@@ -1593,6 +1606,11 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			}
 		}
 		buf = buf + 4;
+
+		/* To removed "0x7E", when received only "0x7E" */
+		if (0x7e == *(((unsigned char *)buf)))
+			return 0;
+
 #ifdef DIAG_DEBUG
 		pr_debug("diag: user space data %d\n", payload_size);
 		for (i = 0; i < payload_size; i++)
@@ -1671,10 +1689,12 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			}
 		}
 #endif
+#if !defined(CONFIG_MACH_JF)
 		/* send masks to 8k now */
 		if (!remote_proc)
 			diag_process_hdlc((void *)
 				(user_space_data + token_offset), payload_size);
+#endif
 		diagmem_free(driver, user_space_data, POOL_TYPE_USER);
 		return 0;
 	}
@@ -2070,7 +2090,7 @@ static int __init diagchar_init(void)
 			goto fail;
 	} else {
 		printk(KERN_INFO "kzalloc failed\n");
-		goto fail;
+		goto fail2;
 	}
 
 	pr_info("diagchar initialized now");
@@ -2085,6 +2105,8 @@ fail:
 	diag_masks_exit();
 	diag_sdio_fn(EXIT);
 	diagfwd_bridge_fn(EXIT);
+	kfree(driver);
+fail2:
 	return -1;
 }
 

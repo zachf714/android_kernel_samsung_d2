@@ -201,6 +201,7 @@ void driver_unregister(struct device_driver *drv)
 {
 	if (!drv || !drv->p) {
 		WARN(1, "Unexpected driver unregister!\n");
+                dump_stack();
 		return;
 	}
 	driver_remove_groups(drv, drv->groups);

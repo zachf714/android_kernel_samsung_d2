@@ -78,9 +78,16 @@ void kgsl_hang_check(struct work_struct *work)
 	if (device->state == KGSL_STATE_ACTIVE) {
 
 		/* Check to see if the GPU is hung */
+#if !defined(CONFIG_MSM_IOMMU) && defined(CONFIG_SEC_PRODUCT_8960)
+		/*Hung detection should only be done on 2d device*/
+		if (device->id == KGSL_DEVICE_3D0 )
+		{
+#endif
 		if (adreno_ft_detect(device, prev_reg_val))
 			adreno_dump_and_exec_ft(device);
-
+#if !defined(CONFIG_MSM_IOMMU) && defined(CONFIG_SEC_PRODUCT_8960)
+		}
+#endif
 		mod_timer(&device->hang_timer,
 			(jiffies + msecs_to_jiffies(KGSL_TIMEOUT_PART)));
 	}
@@ -101,10 +108,17 @@ void hang_timer(unsigned long data)
 {
 	struct kgsl_device *device = (struct kgsl_device *) data;
 
+#if !defined(CONFIG_MSM_IOMMU) && defined(CONFIG_SEC_PRODUCT_8960)
+	/* check Hang only for 3d device */
+	if (device->id == KGSL_DEVICE_3D0) {
+#endif
 	if (device->state == KGSL_STATE_ACTIVE) {
 		/* Have work run in a non-interrupt context. */
 		queue_work(device->work_queue, &device->hang_check_ws);
 	}
+#if !defined(CONFIG_MSM_IOMMU) && defined(CONFIG_SEC_PRODUCT_8960)
+	}
+#endif
 }
 
 /**
@@ -146,6 +160,13 @@ void kgsl_trace_regwrite(struct kgsl_device *device, unsigned int offset,
 	trace_kgsl_regwrite(device, offset, value);
 }
 EXPORT_SYMBOL(kgsl_trace_regwrite);
+
+void kgsl_trace_kgsl_tz_params(struct kgsl_device *device, s64 total_time,
+		 s64 busy_time, int idle_time, int tz_val) {
+
+       trace_kgsl_tz_params(device, total_time, busy_time, idle_time, tz_val);
+}
+EXPORT_SYMBOL(kgsl_trace_kgsl_tz_params);
 
 int kgsl_memfree_hist_init(void)
 {
@@ -2945,7 +2966,7 @@ err_put:
 static inline bool
 mmap_range_valid(unsigned long addr, unsigned long len)
 {
-	return (addr + len) > addr && (addr + len) < TASK_SIZE;
+	return ((ULONG_MAX - addr) > len) && ((addr + len) < TASK_SIZE);
 }
 
 static unsigned long

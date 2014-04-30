@@ -240,6 +240,9 @@ void kgsl_trace_issueibcmds(struct kgsl_device *device, int id,
 		unsigned int timestamp, unsigned int flags,
 		int result, unsigned int type);
 
+void kgsl_trace_kgsl_tz_params(struct kgsl_device *device, s64 total_time,
+		 s64 busy_time, int idle_time, int tz_val);
+
 #ifdef CONFIG_MSM_KGSL_DRM
 extern int kgsl_drm_init(struct platform_device *dev);
 extern void kgsl_drm_exit(void);
@@ -262,7 +265,7 @@ static inline int kgsl_gpuaddr_in_memdesc(const struct kgsl_memdesc *memdesc,
 		size = 1;
 
 	/* don't overflow */
-	if ((gpuaddr + size) < gpuaddr)
+	if (size > UINT_MAX - gpuaddr)
 		return 0;
 
 	if (gpuaddr >= memdesc->gpuaddr &&

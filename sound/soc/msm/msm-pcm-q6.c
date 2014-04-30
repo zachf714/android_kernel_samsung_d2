@@ -485,8 +485,13 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	pr_debug("%s\n", __func__);
 
 	dir = IN;
+#ifdef CONFIG_MACH_M2
+	ret = wait_event_timeout(the_locks.eos_wait,
+				prtd->cmd_ack, 1 * HZ);
+#else
 	ret = wait_event_timeout(the_locks.eos_wait,
 				prtd->cmd_ack, 5 * HZ);
+#endif
 	if (!ret)
 		pr_err("%s: CMD_EOS failed\n", __func__);
 	q6asm_cmd(prtd->audio_client, CMD_CLOSE);
@@ -496,6 +501,9 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	msm_pcm_routing_dereg_phy_stream(soc_prtd->dai_link->be_id,
 			SNDRV_PCM_STREAM_PLAYBACK);
 	q6asm_audio_client_free(prtd->audio_client);
+
+	prtd->audio_client = NULL; /* Samsung fix - prevent null pointer dereference */
+
 	kfree(prtd);
 	return 0;
 }

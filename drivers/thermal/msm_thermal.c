@@ -37,6 +37,7 @@ static int limit_idx;
 static int limit_idx_low;
 static int limit_idx_high;
 static struct cpufreq_frequency_table *table;
+static long current_temp;
 
 static int msm_thermal_get_freq_table(void)
 {
@@ -52,8 +53,11 @@ static int msm_thermal_get_freq_table(void)
 
 	while (table[i].frequency != CPUFREQ_TABLE_END)
 		i++;
-
+#if defined (CONFIG_MACH_M2_REFRESHSPR)
+	limit_idx_low = 5;
+#else
 	limit_idx_low = 0;
+#endif
 	limit_idx_high = limit_idx = i - 1;
 	BUG_ON(limit_idx_high <= 0 || limit_idx_high <= limit_idx_low);
 fail:
@@ -70,8 +74,8 @@ static int update_cpu_max_freq(int cpu, uint32_t max_freq)
 
 	limited_max_freq = max_freq;
 	if (max_freq != MSM_CPUFREQ_NO_LIMIT)
-		pr_info("%s: Limiting cpu%d max frequency to %d\n",
-				KBUILD_MODNAME, cpu, max_freq);
+		pr_info("%s: Limiting cpu%d max frequency to %d (TEMP=%ld)\n",
+				KBUILD_MODNAME, cpu, max_freq, current_temp);
 	else
 		pr_info("%s: Max frequency reset for cpu%d\n",
 				KBUILD_MODNAME, cpu);
@@ -152,6 +156,7 @@ static void __cpuinit check_temp(struct work_struct *work)
 
 	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
 	ret = tsens_get_temp(&tsens_dev, &temp);
+	current_temp = temp;
 	if (ret) {
 		pr_debug("%s: Unable to read TSENS sensor %d\n",
 				KBUILD_MODNAME, tsens_dev.sensor_num);

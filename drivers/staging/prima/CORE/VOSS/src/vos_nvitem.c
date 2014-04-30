@@ -292,7 +292,7 @@ static CountryInfoTable_t countryInfoTable =
         { REGDOMAIN_NO_5GHZ, {'S', 'C'}},  //SEYCHELLES
         { REGDOMAIN_WORLD,   {'S', 'D'}},  //SUDAN
         { REGDOMAIN_ETSI,    {'S', 'E'}},  //SWEDEN
-        { REGDOMAIN_APAC,    {'S', 'G'}},  //SINGAPORE
+        { REGDOMAIN_WORLD,    {'S', 'G'}},  //SINGAPORE
         { REGDOMAIN_WORLD,   {'S', 'H'}},  //SAINT HELENA
         { REGDOMAIN_ETSI,    {'S', 'I'}},  //SLOVENNIA
         { REGDOMAIN_WORLD,   {'S', 'J'}},  //SVALBARD AND JAN MAYEN

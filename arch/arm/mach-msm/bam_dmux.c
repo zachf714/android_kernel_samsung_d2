@@ -55,6 +55,10 @@
 #define MAX_POLLING_SLEEP (6050)
 #define MIN_POLLING_SLEEP (950)
 
+#ifdef BAM_DMUX_FD
+static unsigned int wakelock_timeout;
+#endif
+
 static int msm_bam_dmux_debug_enable;
 module_param_named(debug_enable, msm_bam_dmux_debug_enable,
 		   int, S_IRUGO | S_IWUSR | S_IWGRP);
@@ -1850,8 +1854,12 @@ static void release_wakelock(void)
 	BAM_DMUX_LOG("%s: ref count = %d\n", __func__,
 						wakelock_reference_count);
 	--wakelock_reference_count;
-	if (wakelock_reference_count == 0)
+	if (wakelock_reference_count == 0) {
 		wake_unlock(&bam_wakelock);
+#ifdef BAM_DMUX_FD
+		wake_lock_timeout(&bam_wakelock, wakelock_timeout * HZ);
+#endif
+		}
 	spin_unlock_irqrestore(&wakelock_reference_lock, flags);
 }
 
@@ -2234,7 +2242,7 @@ static void bam_dmux_smsm_ack_cb(void *priv, uint32_t old_state,
 
 static int bam_dmux_probe(struct platform_device *pdev)
 {
-	int rc;
+	int rc, ret;
 	struct resource *r;
 
 	DBG("%s probe called\n", __func__);
@@ -2291,8 +2299,8 @@ static int bam_dmux_probe(struct platform_device *pdev)
 
 	bam_mux_tx_workqueue = create_singlethread_workqueue("bam_dmux_tx");
 	if (!bam_mux_tx_workqueue) {
-		destroy_workqueue(bam_mux_rx_workqueue);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto exit_rx_wq;
 	}
 
 	for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc) {
@@ -2303,9 +2311,8 @@ static int bam_dmux_probe(struct platform_device *pdev)
 		bam_ch[rc].pdev = platform_device_alloc(bam_ch[rc].name, 2);
 		if (!bam_ch[rc].pdev) {
 			pr_err("%s: platform device alloc failed\n", __func__);
-			destroy_workqueue(bam_mux_rx_workqueue);
-			destroy_workqueue(bam_mux_tx_workqueue);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto exit_device_put;
 		}
 	}
 
@@ -2320,32 +2327,37 @@ static int bam_dmux_probe(struct platform_device *pdev)
 					bam_dmux_smsm_cb, NULL);
 
 	if (rc) {
-		destroy_workqueue(bam_mux_rx_workqueue);
-		destroy_workqueue(bam_mux_tx_workqueue);
 		pr_err("%s: smsm cb register failed, rc: %d\n", __func__, rc);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto exit_device_put;
 	}
 
 	rc = smsm_state_cb_register(SMSM_MODEM_STATE, SMSM_A2_POWER_CONTROL_ACK,
 					bam_dmux_smsm_ack_cb, NULL);
 
 	if (rc) {
-		destroy_workqueue(bam_mux_rx_workqueue);
-		destroy_workqueue(bam_mux_tx_workqueue);
-		smsm_state_cb_deregister(SMSM_MODEM_STATE,
-					SMSM_A2_POWER_CONTROL,
-					bam_dmux_smsm_cb, NULL);
 		pr_err("%s: smsm ack cb register failed, rc: %d\n", __func__,
 				rc);
-		for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
-			platform_device_put(bam_ch[rc].pdev);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto exit_smsm_deregister;
 	}
 
 	if (smsm_get_state(SMSM_MODEM_STATE) & SMSM_A2_POWER_CONTROL)
 		bam_dmux_smsm_cb(NULL, 0, smsm_get_state(SMSM_MODEM_STATE));
 
 	return 0;
+
+exit_smsm_deregister:
+	smsm_state_cb_deregister(SMSM_MODEM_STATE, SMSM_A2_POWER_CONTROL,
+					bam_dmux_smsm_cb, NULL);
+exit_device_put:
+	for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
+		platform_device_put(bam_ch[rc].pdev);
+	destroy_workqueue(bam_mux_tx_workqueue);
+exit_rx_wq:
+	destroy_workqueue(bam_mux_rx_workqueue);
+
+	return ret;
 }
 
 static struct of_device_id msm_match_table[] = {
@@ -2362,6 +2374,38 @@ static struct platform_driver bam_dmux_driver = {
 	},
 };
 
+#ifdef BAM_DMUX_FD
+struct device *bamDmux_pkt_dev;
+
+static ssize_t show_waketime(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if (!bamDmux_pkt_dev)
+		return 0;
+
+	return snprintf(buf, sizeof(buf), "%u\n", wakelock_timeout);
+}
+
+static ssize_t store_waketime(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int r;
+	unsigned long msec;
+	if (!bamDmux_pkt_dev)
+		return count;
+
+	r = kstrtoul(buf, 10, &msec);
+
+	if (r)
+		return count;
+
+	wakelock_timeout = (msec/1000);
+	return count;
+}
+
+static DEVICE_ATTR(waketime, 0664, show_waketime, store_waketime);
+#endif
+
 static int __init bam_dmux_init(void)
 {
 #ifdef CONFIG_DEBUG_FS
@@ -2373,6 +2417,18 @@ static int __init bam_dmux_init(void)
 		debug_create("ul_pkt_cnt", 0444, dent, debug_ul_pkt_cnt);
 		debug_create("stats", 0444, dent, debug_stats);
 	}
+#endif
+
+#ifdef BAM_DMUX_FD
+	wakelock_timeout = 0;
+	bamDmux_pkt_dev = device_create(sec_class, NULL, 0, NULL, "bamdmux");
+	if (IS_ERR(bamDmux_pkt_dev))
+		pr_err("%s: Failed to create device(bamDmux_pkt_dev)!\n",
+			__func__);
+
+	if (device_create_file(bamDmux_pkt_dev, &dev_attr_waketime) < 0)
+		pr_err("%s: Failed to create device file(%s)!\n",
+			__func__, dev_attr_waketime.attr.name);
 #endif
 
 	bam_ipc_log_txt = ipc_log_context_create(BAM_IPC_LOG_PAGES, "bam_dmux");
