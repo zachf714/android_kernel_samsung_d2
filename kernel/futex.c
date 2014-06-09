@@ -1292,8 +1292,13 @@ void requeue_pi_wake_futex(struct futex_q *q, union futex_key *key,
  * then direct futex_lock_pi_atomic() to force setting the FUTEX_WAITERS bit.
  * hb1 and hb2 must be held by the caller.
  *
+<<<<<<< HEAD
+ * Return:
+ *  0 - failed to acquire the lock atomically;
+=======
  * Returns:
  *  0 - failed to acquire the lock atomicly
+>>>>>>> 22feaed11f1b0c58aab5df196c0bf011e7095a62
  * >0 - acquired the lock, return value is vpid of the top_waiter
  * <0 - error
  */
@@ -1490,7 +1495,11 @@ retry_private:
 			 * rereading and handing potential crap to
 			 * lookup_pi_state.
 			 */
+<<<<<<< HEAD
+			ret = lookup_pi_state(ret, hb2, &key2, &pi_state, NULL);
+=======
 			ret = lookup_pi_state(ret, hb2, &key2, &pi_state);
+>>>>>>> 22feaed11f1b0c58aab5df196c0bf011e7095a62
 		}
 
 		switch (ret) {
