@@ -197,7 +197,7 @@ struct msm_fb_data_type {
 	bool writeback_active_cnt;
 	boolean resume_state;
 	boolean backlight_ctrl_ongoing;
-	bool writeback_initialized;
+	
 	int cont_splash_done;
 	void *cpu_pm_hdl;
 	u32 acq_fen_cnt;
